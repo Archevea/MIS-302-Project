@@ -1,71 +1,70 @@
 ---
-title: "HW - Bike Data"
-author: "Selimcan Biçer - Group 4"
+title: "Assignment 1 Bike Data"
+author: "Selimcan Biçer / Batuhan Karaköy / Ayşegül Uzunsoy / Yusuf Yeşilmen - Group 4"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  cleanrmd::html_document_clean:
+    theme: sakura
 ---
 
-```{r setup, include=FALSE, error=FALSE, echo=FALSE}
+```{r setup, include=FALSE, error=FALSE, message=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-<h3> Installing Necesarry Libraries </h4>
-
-```{r}
+## Installing Necesarry Libraries
+```{r message=FALSE}
 library(dplyr)
 library(tidyverse)
 library(janitor)
+library(GGally)
+library(corrplot)
 ```
 
 ## Importing dataset
-```{r}
-# Importing dataset
+```{r message=FALSE}
 bike <- readr::read_csv("bike_data.csv")
 ```
 
+## Looking for the first and last few observation
 ```{r}
-# Looking for the first few observaiton
 head(bike)
+
+tail(bike)
 ```
 
-````{r}
-# Looking for the last few observaiton
-tail(bike)
-````
-
+## First Look: Summary and Glimpse
 ````{r}
 glimpse(bike)
-````
 
-
-````{r}
 summary(bike)
 ````
+From here we can see that we have three categorical variables which are seasons, holiday and functioning day.
 
+## Looking for the number of NA's
 ````{r}
-# Looking for the number of NA's
 sum(is.na(bike))
 ````
+We don't have any NA in our data. So we don't need to clean NA's from data.
 
+
+# Cleaning & Looking for the structure of the categorical variables
 ````{r}
-# Cleaning the column names which has blank character in it
 bike <- bike |> 
   clean_names()
 
-# Looking for the structure of the categorical variables
 table(bike$seasons)
 table(bike$holiday)
 table(bike$functioning_day)
 ````
 
+## Looking for the structure of the rainfall and snowfall columns
 ````{r}
-# Looking for the structure of the rainfall and snowfall columns
 table(bike$rainfall)
 table(bike$snowfall)
 ````
 
+## Finding the days with rainfall or snawfall
 ````{r}
-# Finding the days with rainfall or snawfall
 bike_filtered <- bike |>
   filter(rainfall > 0 | snowfall > 0) |> 
   select(rainfall, snowfall)
@@ -74,15 +73,13 @@ rain_and_snow_days <- nrow(bike_filtered)
 print(paste("Days with rainfall or snowfall:", rain_and_snow_days))
 ````
 
+## Removing dew point temperature data
 ````{r}
-# Removing dew point temperature data
 bike_wo_dew <- bike |> select(-dew_point_temperature)
 glimpse(bike_wo_dew)
 ````
 
-````{r}
-library(GGally)
-
+````{r message=FALSE, warnings=FALSE}
 bike_r <- sample(1:nrow(bike), size = 1500) # rows
 bike_c <- c(2:4,sample(c(5:7,9:ncol(bike)),3)) # columns 
 bike_data <- bike[bike_r,bike_c] 
@@ -92,36 +89,13 @@ bike_data |>
 
 ````
 
+## Creating Some Plots
 ````{r}
 bike |> select(rented_bike_count:temperature) |> 
       ggpairs(upper = list(continous = wrap("cor", family="sans")))
 ````
 
 ````{r}
-
-````
-
-
-````{r}
-bike_data |> 
-  group_by(hour) |>                             
-  summarise(a_rent = mean(rented_bike_count)) |>
-  ungroup() |> 
-  ggplot(aes(x = hour, y = a_rent)) +           
-  geom_col(just = 0.5) +                        
-  labs(
-    title = "Average Rented Bike Count",
-    x = "Hours of Day",
-    y = "Average Rented Bike Count"
-  ) + 
-  theme_bw()
-
-````
-
-````{r}
-
-library(corrplot)
-
 bike_new <- bike |> select(-humidity, -wind_speed, -visibility, -dew_point_temperature, -solar_radiation)
 bike_new |> 
     select_if(is.numeric) |>
@@ -134,9 +108,24 @@ bike_new |>
 ````
 
 ````{r}
-
+bike |> 
+  group_by(hour) |>
+  summarise(a_rent=mean(rented_bike_count, na.rm = TRUE)) |> 
+  ungroup() |> 
+  ggplot(aes(x=hour, y=a_rent)) +
+  geom_col(just = 0.5, fill = "steelblue") + 
+  labs(
+    title = "Average Rented Bike Count",
+    x = "Hours of Day",
+    y = "Average Rented Bike Count"
+  ) + 
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(linewidth = 1, colour = "grey80"))
 ````
 
+## Linear Models
 ````{r}
 
 ````
