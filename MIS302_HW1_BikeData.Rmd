@@ -126,15 +126,24 @@ bike |>
 ````
 
 ## Linear Models
-````{r}
 
+````{r}
+lm_1 <- lm(rented_bike_count ~ hour + temperature + humidity, data = bike)
+summary(lm_1)
 ````
 
 ````{r}
-
+lm_2 <- lm(rented_bike_count ~ seasons + holiday + functioning_day, data = bike)
+summary(lm_2)
 ````
 
 ````{r}
+lm_3 <- lm(rented_bike_count ~ temperature + wind_speed + solar_radiation, data = bike)
+summary(lm_3)
+````
 
+````{r}
+lm_4 <- lm(rented_bike_count ~ hour, data = bike)
+summary(lm_4)
 ````
 
