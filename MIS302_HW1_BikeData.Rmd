@@ -1,0 +1,173 @@
+---
+title: "Assignment 1 Bike Data"
+author: "Batuhan Karaköy / Yusuf Yeşilmen / Ayşegül Uzunsoy / Selimcan Biçer - Group 4"
+date: "`r Sys.Date()`"
+output: 
+  cleanrmd::html_document_clean:
+    theme: water
+---
+
+```{r setup, include=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Installing Necesarry Libraries
+```{r message=FALSE}
+library(dplyr)
+library(tidyverse)
+library(janitor)
+library(GGally)
+library(corrplot)
+library(ggplot2)
+```
+
+## Importing dataset
+```{r message=FALSE}
+bike <- readr::read_csv("bike_data.csv")
+```
+
+## Looking for the first and last few observation
+```{r}
+head(bike)
+
+tail(bike)
+```
+
+## First Look: Summary and Glimpse
+````{r}
+glimpse(bike)
+
+summary(bike)
+````
+From here we can see that we have three categorical variables which are seasons, holiday and functioning day.
+
+## Looking for the number of NA's
+````{r}
+sum(is.na(bike))
+````
+We don't have any NA in our data. So we don't need to clean NA's from data.
+
+# Cleaning & Looking for the structure of the categorical variables
+````{r}
+bike <- bike |> 
+  clean_names()
+
+table(bike$seasons)
+table(bike$holiday)
+table(bike$functioning_day)
+````
+
+## Looking for the structure of the rainfall and snowfall columns
+````{r}
+table(bike$rainfall)
+table(bike$snowfall)
+````
+
+## Finding the days with rainfall or snawfall
+````{r}
+bike_filtered <- bike |>
+  filter(rainfall > 0 | snowfall > 0) |> 
+  select(rainfall, snowfall)
+
+rain_and_snow_days <- nrow(bike_filtered)
+print(paste("Days with rainfall or snowfall:", rain_and_snow_days))
+````
+
+## Removing dew point temperature data
+````{r}
+bike_wo_dew <- bike |> select(-dew_point_temperature)
+glimpse(bike_wo_dew)
+````
+
+## Creating Some Plots
+````{r}
+bike |> select(rented_bike_count:temperature) |> 
+      ggpairs(upper = list(continous = wrap("cor", family="sans")))
+````
+There is a moderate positive correlation (0.539) between temperature and bike rentals, meaning more bikes are rented when the temperature is higher, but this effect slows down around 30°C. The correlation between bike rentals and hour (0.410) suggests that rentals increase at certain times, probably during commuting hours. The relationship between hour and temperature (0.124) is weak, so temperature changes do not strongly depend on the time of day. In conclusion, bike rentals are affected by both temperature and time, with commuting hours being an important factor.
+
+````{r}
+bike_new <- bike |> select(-humidity, -wind_speed, -visibility, -dew_point_temperature, -solar_radiation)
+bike_new |> 
+    select_if(is.numeric) |>
+    cor () |>
+    corrplot( type = "upper",
+            insig = "blank",
+            diag = FALSE,
+            addCoef.col = "grey40")
+
+````
+Rainfall (-0.12) and snowfall (-0.14) have a small negative effect, meaning bad weather slightly reduces rentals. Temperature and snowfall are negatively related (-0.22), as lower temperatures lead to more snow. In summary, bike rentals depend mostly on temperature and time, while rain and snow have a smaller impact.
+
+````{r}
+bike |> 
+  group_by(hour) |>
+  summarise(a_rent=mean(rented_bike_count, na.rm = TRUE)) |> 
+  ungroup() |> 
+  ggplot(aes(x=hour, y=a_rent)) +
+  geom_col(just = 0.5, fill = "#c77cff") + 
+  labs(
+    title = "Average Rented Bike Count by Hour",
+    x = "Hours of Day",
+    y = "Average Rented Bike Count"
+  ) + 
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(linewidth = 1, colour = "grey80"))
+````
+Rentals are high in the early morning, decrease between 3 AM and 6 AM, and rise again after 7 AM, peaking around 5 PM. This suggests that bike rentals are most common during commuting hours, likely when people go to and return from work. Rentals remain relatively high in the evening but drop after 9 PM. Overall, the data shows a clear pattern of higher demand during morning and evening rush hours.
+
+````{r}
+bike |> 
+  group_by(temperature) |>
+  summarise(a_rent=mean(rented_bike_count, na.rm = TRUE)) |> 
+  ungroup() |> 
+  ggplot(aes(x=temperature, y=a_rent)) +
+  geom_line(just = 0.5, color = "#c77cff") + 
+  labs(
+    title = "Average Rented Bike Count by Temperature",
+    x = "Temperature",
+    y = "Average Rented Bike Count"
+  ) + 
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(linewidth = 1, colour = "grey80"))
+````
+As the temperature rises, the number of rented bikes increases steadily, reaching a peak between 25 and 30 degrees Celsius. After this peak, the number of rented bikes starts to decline slightly as the temperature approaches 40 degrees Celsius. This trend indicates that people prefer renting bikes in moderate to warm weather, while very cold or extremely hot temperatures reduce their interest.
+
+````{r}
+ggplot(bike, aes(x="", y=rented_bike_count, fill=seasons)) +
+  geom_bar(stat="identity", width=1) +
+  coord_polar("y", start=0) +
+  labs(title = "Rented Bike Count by Seasons") +
+  theme_void()
+````
+The largest portion belongs to summer, indicating that most people prefer to rent bikes during this season. Spring and autumn follow, with a significant but smaller share of rentals compared to summer. Winter has the smallest share, meaning bike rentals are less common during colder months. This pattern suggests that there is a seasonality with the bike rental numbers.
+
+## Linear Models
+
+````{r}
+lm_1 <- lm(rented_bike_count ~ hour + temperature + humidity, data = bike)
+summary(lm_1)
+````
+This linear model explains the relationship between bike rental counts and three factors: hour, temperature, and humidity. All three factors are highly significant and influence the bike rental count differently. Rentals tend to increase with higher values for hour and temperature, while higher humidity decreases rentals. The model shows a moderate level of accuracy in explaining the variation in bike rental counts. Additionally, the results support the idea that time, weather, and humidity play crucial roles in bike rental behavior.
+
+````{r}
+lm_2 <- lm(rented_bike_count ~ seasons + holiday + functioning_day, data = bike)
+summary(lm_2)
+````
+This linear model explores the relationship between bike rentals and three factors: seasons, holidays, and functioning days. The analysis shows that the number of bike rentals changes significantly based on the seasons. Rentals are higher in summer but much lower in winter, while spring has a negative impact compared to autumn, which is used as the reference season. Functioning days have a strong positive effect on rentals, meaning bikes are rented more on days when services are fully operating. Holidays show a weaker and less consistent effect on rentals. Overall, the model highlights how seasonal and operational factors influence bike rental behavior.
+
+````{r}
+lm_3 <- lm(rented_bike_count ~ temperature + wind_speed + solar_radiation, data = bike)
+summary(lm_3)
+````
+This linear model examines how bike rentals are influenced by temperature, wind speed, and solar radiation. All three factors are significant and impact the rental counts in different ways. Higher temperature and solar radiation lead to more rentals, while increased wind speed also positively affects rental counts, though the reason could relate to better weather conditions overall. The model explains about 31% of the variation in rental counts, indicating a moderate level of fit. This analysis shows how environmental factors play a key role in bike rental behaviors.
+
+````{r}
+lm_4 <- lm(rented_bike_count ~ hour, data = bike)
+summary(lm_4)
+````
+This linear model examines the relationship between bike rental count and the hour of the day. The analysis shows that hour has a significant and positive effect on rental counts, meaning more bikes are rented during later hours of the day. However, the model explains only a small part of the variation in rental counts, indicating that other factors also play a major role in influencing bike rentals. Overall, this analysis highlights the importance of time in rental patterns but suggests the need for additional predictors for a better understanding of rental behavior.
