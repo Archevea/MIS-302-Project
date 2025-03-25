@@ -18,6 +18,7 @@ library(tidyverse)
 library(janitor)
 library(GGally)
 library(corrplot)
+library(ggplot2)
 ```
 
 ## Importing dataset
@@ -79,16 +80,6 @@ bike_wo_dew <- bike |> select(-dew_point_temperature)
 glimpse(bike_wo_dew)
 ````
 
-````{r message=FALSE, warnings=FALSE}
-bike_r <- sample(1:nrow(bike), size = 1500) # rows
-bike_c <- c(2:4,sample(c(5:7,9:ncol(bike)),3)) # columns 
-bike_data <- bike[bike_r,bike_c] 
-
-bike_data |> 
-  ggpairs()
-
-````
-
 ## Creating Some Plots
 ````{r}
 bike |> select(rented_bike_count:temperature) |> 
@@ -113,7 +104,7 @@ bike |>
   summarise(a_rent=mean(rented_bike_count, na.rm = TRUE)) |> 
   ungroup() |> 
   ggplot(aes(x=hour, y=a_rent)) +
-  geom_col(just = 0.5, fill = "steelblue") + 
+  geom_col(just = 0.5, fill = "#c77cff") + 
   labs(
     title = "Average Rented Bike Count",
     x = "Hours of Day",
@@ -123,6 +114,32 @@ bike |>
   theme(
     panel.grid = element_blank(),
     axis.line = element_line(linewidth = 1, colour = "grey80"))
+````
+
+````{r}
+bike |> 
+  group_by(temperature) |>
+  summarise(a_rent=mean(rented_bike_count, na.rm = TRUE)) |> 
+  ungroup() |> 
+  ggplot(aes(x=temperature, y=a_rent)) +
+  geom_line(just = 0.5, color = "#c77cff") + 
+  labs(
+    title = "Average Rented Bike Count",
+    x = "Temperature",
+    y = "Average Rented Bike Count"
+  ) + 
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.line = element_line(linewidth = 1, colour = "grey80"))
+````
+
+````{r}
+ggplot(bike, aes(x="", y=rented_bike_count, fill=seasons)) +
+  geom_bar(stat="identity", width=1) +
+    coord_polar("y", start=0) +
+  labs(title = "Rented Bike Count by Seasons") +
+  theme_void()
 ````
 
 ## Linear Models
