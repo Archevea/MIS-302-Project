@@ -194,6 +194,7 @@ data.
           ggpairs(upper = list(continous = wrap("cor", family="sans")))
 
 ![1](https://github.com/user-attachments/assets/198af9a6-aaa0-4416-9ead-db5233bb3f79)
+
 There is a moderate positive correlation (0.539) between temperature and
 bike rentals, meaning more bikes are rented when the temperature is
 higher, but this effect slows down around 30°C. The correlation between
@@ -214,6 +215,7 @@ factor.
                 addCoef.col = "grey40")
 
 ![2](https://github.com/user-attachments/assets/0d9cd22a-e3cf-424d-bfa7-924b8f7db64e)
+
 Rainfall (-0.12) and snowfall (-0.14) have a small negative effect,
 meaning bad weather slightly reduces rentals. Temperature and snowfall
 are negatively related (-0.22), as lower temperatures lead to more snow.
@@ -237,6 +239,7 @@ rain and snow have a smaller impact.
         axis.line = element_line(linewidth = 1, colour = "grey80"))
 
 ![3](https://github.com/user-attachments/assets/080476ec-f9e1-4275-bc85-a88e6a09e522)
+
 Rentals are high in the early morning, decrease between 3 AM and 6 AM,
 and rise again after 7 AM, peaking around 5 PM. This suggests that bike
 rentals are most common during commuting hours, likely when people go to
@@ -264,6 +267,7 @@ demand during morning and evening rush hours.
     ## parameters: `just`
 
 ![5](https://github.com/user-attachments/assets/7782d188-b7b1-45e3-92c8-5512f7d30578)
+
 As the temperature rises, the number of rented bikes increases steadily,
 reaching a peak between 25 and 30 degrees Celsius. After this peak, the
 number of rented bikes starts to decline slightly as the temperature
@@ -278,6 +282,7 @@ hot temperatures reduce their interest.
       theme_void()
 
 ![6](https://github.com/user-attachments/assets/2a1555ee-6fa5-40f3-816e-f0aad4f28889)
+
 The largest portion belongs to summer, indicating that most people
 prefer to rent bikes during this season. Spring and autumn follow, with
 a significant but smaller share of rentals compared to summer. Winter
