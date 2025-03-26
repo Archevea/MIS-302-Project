@@ -5,9 +5,6 @@ date: "`r Sys.Date()`"
 output: rmdformats::robobook
 ---
 
-## Objective
-The aim of this study is to analyze bike rental data and identify the factors that affect the number of rentals. We start by cleaning and transforming the dataset to ensure accuracy. Then, we perform an exploratory data analysis (EDA) to understand patterns and relationships between variables. Various visualizations help us observe trends, such as the impact of temperature, time of day, and weather conditions on bike rentals. Finally, we build multiple linear regression models to examine how different factors influence rental numbers. This analysis provide insights into bike rental behavior and help predict future trends.
-
 ```{r setup, include=FALSE, error=FALSE, message=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -21,13 +18,15 @@ library(corrplot)
 library(ggplot2)
 ```
 
-## Importing dataset
+## Objective
+The aim of this study is to analyze bike rental data and identify the factors that affect the number of rentals. We start by cleaning and transforming the dataset to ensure accuracy. Then, we perform an exploratory data analysis (EDA) to understand patterns and relationships between variables. Various visualizations help us observe trends, such as the impact of temperature, time of day, and weather conditions on bike rentals. Finally, we build multiple linear regression models to examine how different factors influence rental numbers. This analysis provide insights into bike rental behavior and help predict future trends.
+
+## Data Import
 ```{r message=FALSE}
 bike <- readr::read_csv("bike_data.csv")
 ```
 
 # Data Cleaning & Transforming
-
 ## Checking Column Names
 ```{r}
 colnames(bike)
@@ -43,17 +42,22 @@ colnames(bike)
 
 cat("Number of NA's:", sum(is.na(bike)), "\n")
 ```
-Now we don't have any blank or uppercase characters in our column names. Also we don't have any NA in our data.
+Now we don't have any blank or uppercase characters in our column names. Also we don't have any NA's in our data. 
 
-## Summary and Glimpse
+## Glimpse and Summary
 ````{r}
 glimpse(bike)
+````
+From here we see that we have 8760 observations. We have 14 columns as 4 character and 10 numeric. So, seasons, holiday and functioning_day is our categorical variables. 
+
+````{r}
 summary(bike)
 ````
-From here we see that we have 8760 observations. We have 14 columns as 4 character and 10 numeric. We see that solar radiation, rainfall and snowfall has so many observations that equal to zero. 
+We see that solar radiation, rainfall and snowfall has so many observations that equal to zero. When we look at the 1st and 3rd quartile values of snowfall and rainfall we can say that at least 75% of the observations are equal to zero. When we look at the median (0.0100) and mean (0.5691) values of solar_radiation we see a noticeable difference, with the mean being much higher than the median. This indicates that the distribution is right-skewed.
 
 ## Categorical Variables
 ````{r}
+summary(bike$seasons)
 table(bike$seasons)
 table(bike$holiday)
 table(bike$functioning_day)
@@ -76,35 +80,16 @@ bike <- bike |>
 
 colnames(bike)
 ````
-As we can see dew point temprature is gone.
+As we can see dew point temperature is gone.
 
 # Creating Some Visual Summaries
-
 ## ggpairs
 ````{r warnings = FALSE}
-bike_hour <- bike |>
-  select(-hour)
-
-bike_hour |> select(rented_bike_count:temperature:humidity) |> 
+bike |> select(rented_bike_count, temperature, humidity) |> 
       ggpairs(upper = list(continous = wrap("cor", family="sans")))
 ````
 
 There is a moderate positive correlation (0.539) between temperature and bike rentals, meaning more bikes are rented when the temperature is higher, but this effect slows down around 30°C. The correlation between bike rentals and hour (0.410) suggests that rentals increase at certain times, probably during commuting hours. The relationship between hour and temperature (0.124) is weak, so temperature changes do not strongly depend on the time of day. In conclusion, bike rentals are affected by both temperature and time, with commuting hours being an important factor.
-
-## Corr plot
-````{r}
-bike_new <- bike |> select(-rainfall, -wind_speed, -visibility, -snowfall, -hour)
-bike_new |> 
-    select_if(is.numeric) |>
-    cor () |>
-    corrplot( type = "upper",
-            insig = "blank",
-            diag = FALSE,
-            addCoef.col = "grey80")
-
-````
-
-Rainfall (-0.12) and snowfall (-0.14) have a small negative effect, meaning bad weather slightly reduces rentals. Temperature and snowfall are negatively related (-0.22), as lower temperatures lead to more snow. In summary, bike rentals depend mostly on temperature and time, while rain and snow have a smaller impact.
 
 ## barplot
 ````{r}
@@ -113,7 +98,7 @@ bike |>
   summarise(a_rent=mean(rented_bike_count, na.rm = TRUE)) |> 
   ungroup() |> 
   ggplot(aes(x=hour, y=a_rent)) +
-  geom_col(just = 0.5, fill = "#c77cff") + 
+  geom_col(just = 0.5, fill = "lightblue") + 
   labs(
     title = "Average Rented Bike Count by Hour",
     x = "Hours of Day",
@@ -124,7 +109,6 @@ bike |>
     panel.grid = element_blank(),
     axis.line = element_line(linewidth = 1, colour = "grey80"))
 ````
-
 Rentals are high in the early morning, decrease between 3 AM and 6 AM, and rise again after 7 AM, peaking around 5 PM. This suggests that bike rentals are most common during commuting hours, likely when people go to and return from work. Rentals remain relatively high in the evening but drop after 9 PM. Overall, the data shows a clear pattern of higher demand during morning and evening rush hours.
 
 ## line plot
@@ -134,7 +118,7 @@ bike |>
   summarise(a_rent=mean(rented_bike_count, na.rm = TRUE)) |> 
   ungroup() |> 
   ggplot(aes(x=temperature, y=a_rent)) +
-  geom_line(just = 0.5, color = "#c77cff") + 
+  geom_line(just = 0.5, color = "lightblue") + 
   labs(
     title = "Average Rented Bike Count by Temperature",
     x = "Temperature",
