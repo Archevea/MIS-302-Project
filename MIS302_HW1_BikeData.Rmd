@@ -148,13 +148,16 @@ bike |>
 ````
 
 # Linear Models
-## Model I
-````{r}
+## Creating Dummy Variables
+```{r}
 bike <- bike |>
   mutate(solar_radiation_dummy = ifelse(solar_radiation > 0, 1, 0)) |>
   mutate(rainfall_dummy = ifelse(rainfall > 0, 1, 0)) |>
   mutate(snowfall_dummy = ifelse(snowfall > 0, 1, 0))
+```
 
+## Model I
+````{r}
 lm_1 <- lm(rented_bike_count ~ hour + temperature + humidity + solar_radiation_dummy + snowfall_dummy + rainfall_dummy, data = bike)
 summary(lm_1)
 ````
