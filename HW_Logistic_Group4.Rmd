@@ -1,0 +1,113 @@
+---
+title: 'Assignment 2: Boston Data'
+author: "Batuhan Karaköy / Yusuf Yeşilmen / Selimcan Biçer / Ayşegül Uzunsoy"
+date: "`r Sys.Date()`"
+output: rmdformats::robobook
+---
+
+```{r setup, include=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective
+This project aims to build a logistic regression model to classify crime levels in the Boston dataset. By analyzing socio-economic and housing-related factors, we will predict whether crime is high or low. After performing exploratory data analysis (EDA), we will fit the model and evaluate its performance using a confusion matrix and accuracy score. Finally, we will interpret the results to understand the key factors influencing crime rates.
+
+```{r messages = FALSE}
+library(MASS)
+
+data(Boston)
+
+boston <- Boston[,c(2:8,10)]
+
+set.seed(138006) 
+thr <- runif(1, min=0.2, max = 0.35)
+thr
+boston$crimclass <- ifelse(Boston$crim < thr, "Low", "High")
+```
+
+# Data Cleaning & Transforming
+## Checking Column Names
+```{r}
+colnames(Boston)
+```
+
+## Data Cleaning
+```{r}
+cat("Number of NA's:", sum(is.na(Boston)), "\n")
+```
+
+## Glimpse and Summary
+````{r messages = FALSE}
+library(tidyverse)
+glimpse(Boston)
+````
+
+````{r}
+summary(Boston)
+````
+# A Visual Summary: ggpairs
+```{r warnings = FALSE}
+library(GGally)
+
+ggpairs(boston[, c("rm", "age", "tax", "crimclass")], aes(color = crimclass))
+```
+
+```{r}
+crime_table <- table(boston$crimclass)
+print(crime_table)
+```
+
+# crimclass 
+```{r}
+class(boston$crimclass)
+```
+
+```{r}
+boston$crimclass <- as.factor(boston$crimclass)
+
+class(boston$crimclass)
+```
+
+# Creating the Logistic Regression Model
+```{r}
+fit.logit <- glm(crimclass ~ ., data = boston, family = binomial)
+
+summary(fit.logit)
+```
+
+# Model Evaluation
+```{r}
+predictions <- predict(logit_model, type = "response")
+pred_class <- ifelse(predictions > 0.5, "High", "Low")
+
+conf_matrix <- table(Predicted = pred_class, Actual = boston$crimclass)
+
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+
+conf_matrix
+accuracy
+```
+
+# Prediction
+```{r}
+prd <- predict(fit.logit, type = "response")
+
+prd2 <- ifelse(prd > 0.5, 1, 0)
+
+head(cbind(Actual = boston$crimclass, Predicted = prd2))
+```
+
+# Confusion Matrix
+```{r}
+library(caret)
+
+boston$crimclass <- factor(boston$crimclass, levels = c(0, 1))
+prd2 <- factor(prd2, levels = c(0, 1))
+
+confusionMatrix(as.factor(prd2), boston$crimclass)
+
+table(prd2, boston$crimclass)
+```
+
+# Conclusion
+
