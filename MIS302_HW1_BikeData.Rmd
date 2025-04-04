@@ -167,21 +167,48 @@ bike <- bike |>
 lm_1 <- lm(rented_bike_count ~ hour + temperature + humidity + solar_radiation_dummy + snowfall_dummy + rainfall_dummy, data = bike)
 summary(lm_1)
 ````
+-	Hour and Temperature have significant positive effects on bike rentals, with each additional hour or higher temperature leading to more rentals.
+
+-	Humidity has a negative effect: as humidity increases, bike rentals tend to decrease.,
+
+-	Solar radiation increases bike rentals, while snowfall has no significant effect.
+
+-	Rainfall drastically reduces bike rentals, as shown by the negative coefficient.
+
+-	The model explains around 48.8% of the variance in bike rentals, indicating it’s fairly effective at predicting bike usage.
+
 ## Model II
 ````{r}
 lm_2 <- lm(rented_bike_count ~ seasons + holiday + functioning_day, data = bike)
 summary(lm_2)
 ````
+-	Working day has a strong positive effect on rentals—bikes are rented more on working days.
+
+-	Season effects show that Spring and Winter tend to have fewer rentals compared to Summer, which is associated with more rentals.
+
+-	The model explains 26.8% of the variance, showing that while it captures some seasonality and holiday effects, it’s less powerful than Model I.
+
 ## Model III
 ````{r}
 lm_3 <- lm(rented_bike_count ~ temperature + wind_speed + solar_radiation, data = bike)
 summary(lm_3)
 ````
+-	Temperature and Wind Speed both have positive effects on rentals: warmer temperatures and higher wind speeds are linked to more bike usage.
+
+-	Solar radiation remains positively significant, indicating that sunny weather encourages more rentals.
+
+-	This model has an R-squared of 31.1%, meaning weather variables are important but not sufficient to fully explain the variation in bike rentals.
+
 ## Model IV
 ````{r}
 lm_4 <- lm(rented_bike_count ~ hour, data = bike)
 summary(lm_4)
 ````
+-	Hour has a significant positive effect on rentals, with the coefficient indicating that bike rentals tend to increase as the day progresses.
 
+-	This model explains only 16.8% of the variation, showing that hour alone cannot fully predict bike rentals without additional factors.
+
+# Conclusion
+In all models, temperature, hour, and weather conditions like rainfall or solar radiation are crucial in predicting bike rentals. Models that include seasonal or holiday effects provide additional insights, while the hour-only model shows that time of day also plays a role, but it’s not sufficient by itself.
 
 **Note:** Some of the interpretations and explanations were refined with the help of GPT.
