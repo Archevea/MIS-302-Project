@@ -9,9 +9,10 @@ output: rmdformats::robobook
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Objective
+# Objective
 This project aims to build a logistic regression model to classify crime levels in the Boston dataset. By analyzing socio-economic and housing-related factors, we will predict whether crime is high or low. After performing exploratory data analysis (EDA), we will fit the model and evaluate its performance using a confusion matrix and accuracy score. Finally, we will interpret the results to understand the key factors influencing crime rates.
 
+# Data Import
 ```{r messages = FALSE}
 library(MASS)
 
@@ -30,43 +31,52 @@ boston$crimclass <- ifelse(Boston$crim < thr, "Low", "High")
 ```{r}
 colnames(Boston)
 ```
+When we look at the column names of the data, we can see there is no uppercase or blank characters. So we don't have to clean the colnames. 
 
 ## Data Cleaning
 ```{r}
 cat("Number of NA's:", sum(is.na(Boston)), "\n")
 ```
+The number of NA's is equal to zero. So we don't have to clean the NA values form data. 
 
 ## Glimpse and Summary
 ````{r messages = FALSE}
 library(tidyverse)
 glimpse(Boston)
 ````
+From here we see that we have 506 observations. We have 14 columns which all have numberic values.
 
 ````{r}
 summary(Boston)
 ````
+We see that (`chas`) has so many observations that equal to zero. When we look at the 1st and 3rd quartile values of (`chas`) we can say that at least 75% of the observations are equal to zero. When we look at the median (0) and mean (11.36) values of (`zn`) we see a noticeable difference, with the mean being much higher than the median. This indicates that the distribution is right-skewed. Also the we see that 1st quartile and median values of (`zn`) is equal to zero, which means that 50% of the observations are equal to zero. 
+
 # A Visual Summary: ggpairs
 ```{r warnings = FALSE}
 library(GGally)
 
 ggpairs(boston[, c("rm", "age", "tax", "crimclass")], aes(color = crimclass))
 ```
+From the correlation values, we can see that rm has a negative correlation (-0.240) with age, suggesting that as the average number of rooms increases, the proportion of older buildings decreases. Similarly, tax is negatively correlated (-0.292) with rm, implying that higher property taxes are associated with houses having fewer rooms. On the other hand, (`tax`) shows a moderate positive correlation (0.506) with (`crimclass`), meaning areas with higher taxes tend to have a different crime classification.
 
 ```{r}
 crime_table <- table(boston$crimclass)
 print(crime_table)
 ```
+It shows that there are 237 entries in the "High" crime class and 269 in the "Low" crime class. This indicates a fairly balanced distribution, with slightly more cases in the "Low" category.
 
-# crimclass 
+# Crimclass Factor Transformation 
 ```{r}
 class(boston$crimclass)
 ```
+First we check the class of (`crimclass`) variable and we see that its a character. So we need to transform it to factor to later use.
 
 ```{r}
 boston$crimclass <- as.factor(boston$crimclass)
 
 class(boston$crimclass)
 ```
+After the transformation we check the class of (`crimclass`) and now we can see that it is a factor now.
 
 # Creating the Logistic Regression Model
 ```{r}
@@ -74,10 +84,17 @@ fit.logit <- glm(crimclass ~ ., data = boston, family = binomial)
 
 summary(fit.logit)
 ```
+- According to the logistic regression output, several variables significantly affect crime classification. 
+
+- Notably, higher nitrogen oxide concentration (`nox`) is a strong predictor of higher crime levels. 
+
+- Similarly, variables like room count (`rm`), property tax (`tax`), and distance from employment (`dis`) are all positively associated with crime, which may suggest complex socio-economic dynamics.
+
+- Conversely, residential zoning (`zn`) and industrial proportion (`indus`) are negatively associated with crime, indicating that more organized residential or industrial planning might correlate with safer areas.
 
 # Model Evaluation
 ```{r}
-predictions <- predict(logit_model, type = "response")
+predictions <- predict(fit.logit, type = "response")
 pred_class <- ifelse(predictions > 0.5, "High", "Low")
 
 conf_matrix <- table(Predicted = pred_class, Actual = boston$crimclass)
@@ -85,7 +102,7 @@ conf_matrix <- table(Predicted = pred_class, Actual = boston$crimclass)
 accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
 
 conf_matrix
-accuracy
+cat("Accuracy of the model:", accuracy)
 ```
 
 # Prediction
@@ -96,6 +113,13 @@ prd2 <- ifelse(prd > 0.5, 1, 0)
 
 head(cbind(Actual = boston$crimclass, Predicted = prd2))
 ```
+- The logistic regression model performs very well, achieving an overall accuracy of 88.3%. The confusion matrix shows that the model correctly classified 238 low-crime areas and 209 high-crime areas, with only a small number of misclassifications (29 false negatives and 30 false positives).
+
+- The sensitivity of 88.8% indicates the model is very effective at identifying low-crime areas (class 0), while the specificity of 87.8% shows similar performance for high-crime areas (class 1). The balanced accuracy (88.3%) confirms the model handles class imbalance reasonably well.
+
+- The Kappa statistic of 0.766 suggests substantial agreement between predicted and actual classes, indicating that the model performs significantly better than random guessing.
+
+- Additionally, the p-value from McNemar's test is 1, suggesting there is no significant difference between the false positive and false negative error rates, which indicates a balanced model.
 
 # Confusion Matrix
 ```{r}
@@ -110,4 +134,10 @@ table(prd2, boston$crimclass)
 ```
 
 # Conclusion
+The logistic regression model built on the Boston dataset demonstrates strong predictive performance, achieving an accuracy of over 88%. Key predictors such as nitrogen oxide concentration (`nox`), property tax rates (`tax`), and average number of rooms per dwelling (`rm`) emerged as significant factors positively associated with higher crime levels.
 
+The confusion matrix indicates a balanced performance across both classes, with high sensitivity and specificity. The Kappa statistic further confirms strong agreement between predicted and actual values, suggesting the model is both reliable and well-calibrated.
+
+Overall, the analysis highlights the importance of environmental and economic indicators in predicting urban crime levels. For future work, experimenting with interaction terms or applying non-linear classifiers such as random forests or gradient boosting could further improve predictive power and reveal more complex relationships.
+
+**Note:** Some of the interpretations and explanations were refined with the help of GPT.
