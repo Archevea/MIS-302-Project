@@ -136,13 +136,13 @@ bike |>
 ````
 This graph shows that as the temperature rises, the number of bike rentals increases, reaching a peak at around 20 degrees Celsius. After this point, rentals slightly decline. The graph suggests that moderate temperatures encourage bike rentals, while extreme temperatures might lead to a decrease in demand. This information could help bike rental services plan based on weather conditions.
 
-## Dodge Bar Plot of Bike Rentals by Temperature 
+## Dodge Bar Plot: Bike Rentals by Temperature & Seasons
 ````{r}
 bike |>
   mutate(temp_bin = cut(temperature, breaks = seq(floor(min(temperature)), ceiling(max(temperature)), by = 2))) |>
   ggplot(aes(x = temp_bin, y = rented_bike_count, fill = seasons)) +
   geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Dodge Bar Plot of Bike Rentals by Temperature",
+  labs(title = "Bike Rentals by Temperature & Seasons",
        x = "Temperature",
        y = "Total Rented Bike Count",
        fill = "Seasons") +
