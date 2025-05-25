@@ -1,0 +1,1584 @@
+---
+title: "Bank Marketing – Customer Response Prediction"
+author: "Group 4: Selimcan Biçer, Batuhan Karaköy, Ayşegül Uzunsoy, Yusuf Yeşilmen"
+date: "2025-05-21"
+output: slidy_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  comment = NA
+)
+library(tidyverse)
+library(caTools)
+library(caret)
+library(ROCR)
+library(lmtest)
+library(pscl)
+library(summarytools)
+library(corrplot)
+library(e1071)
+library(randomForest)
+```
+
+```{r}
+bank_data <- read.csv("bank-full.csv", sep = ";")
+```
+
+---
+
+## Objective
+
+- Predict whether a client subscribes to a term deposit.
+- Use demographic and campaign-related features.
+- Build and evaluate a predictive model using logistic regression.
+
+
+## About the Dataset
+
+- Source: Portuguese bank’s direct marketing campaigns  
+- Observations: `r nrow(bank_data)`  
+- Variables: `r ncol(bank_data)`  
+- Features include:
+  - Age, job, marital status, education
+  - Housing and personal loan status
+  - Contact type and campaign info  
+- **Target variable:** `y` – whether the client subscribed (yes/no)
+
+---
+
+## Presentation Roadmap
+
+1. Exploratory Data Analysis (EDA)
+2. Linear Modeling
+3. Logistic Regression Modeling
+4. Model Evaluation (Accuracy, ROC, AUC)
+5. Marketing Recommendations
+
+---
+
+## Colnames, Glimpse and Summary
+```{r}
+## Checking Column Names
+colnames(bank_data)
+```
+
+```{r}
+library(tidyverse)
+
+glimpse(bank_data)
+```
+- Simple Look at the Data
+- No missing values, but some variables (job, education, poutcome) include "unknown" categories.
+- Numeric variables like balance and duration show skewed distributions and potential outliers.
+- Skewness can affect models that assume normality (e.g., logistic regression).
+```{r}
+summary(bank_data)
+```
+
+- Quick overview of the dataset’s structure.
+- It showed that the data contains 45,211 observations and 17 variables, including both numeric and categorical types.
+
+---
+
+## Target Variable: Subscription Outcome (y)
+
+- y represents whether a client subscribed to a term deposit after the marketing campaign.
+- It is a binary categorical variable with two possible values: "yes" and "no".
+
+```{r}
+# Prepare data
+y_dist <- bank_data %>%
+  count(y) %>%
+  mutate(
+    percent = round(100 * n / sum(n), 1),
+    label = paste0(percent, "%")
+  )
+
+# Pie chart with selected colors
+ggplot(y_dist, aes(x = "", y = n, fill = y)) +
+  geom_col(width = 1) +
+  coord_polar(theta = "y") +
+  geom_text(
+    aes(label = label),
+    position = position_stack(vjust = 0.5),
+    color = "white",
+    size = 5,
+    fontface = "bold"
+  ) +
+  scale_fill_manual(values = c("no" = "#F4B183", "yes" = "#A2C8E2")) +
+  theme_void() +
+  labs(
+    title = "Subscription Outcome Distribution",
+    fill = "Subscription"
+  )
+
+```
+
+- Only about 11.7% of clients subscribed (yes), while 88.3% did not (no).
+- This imbalance can bias models toward predicting the majority class (no) if not addressed properly.
+
+---
+
+## 📊 Response Rate by Job Type
+
+- This horizontal bar chart displays the conversion (subscription) rate for each job category.
+- Jobs are sorted by response rate, and a dashed vertical line represents the overall average subscription rate (~11.7%).
+
+```{r}
+# Calculate overall conversion rate
+conversion_rate <- prop.table(table(bank_data$y))["yes"]
+
+job_df <- bank_data %>%
+  group_by(job) %>%
+  summarise(
+    total = n(),
+    yes_count = sum(y == "yes"),
+    response_rate = yes_count / total,
+    flag = ifelse(response_rate > conversion_rate, 1, 0)
+  )
+
+ggplot(job_df, aes(x = reorder(job, response_rate), 
+       y = response_rate, 
+       fill = factor(flag))) +
+  geom_col() +
+  coord_flip() +
+  geom_hline(yintercept = conversion_rate, 
+             linetype = "dashed", 
+             color = "red") +
+  scale_fill_manual(values = c("0" = "#F4B183", "1" = "#A2C8E2"),
+                    labels = c("Below Average", "Above Average")) +
+  theme_minimal() +
+  labs(title = "Conversion Rate by Job", 
+       y = "Response Rate", 
+       x = "", 
+       fill = "Performance vs Average") +
+  theme(legend.position = "bottom")
+```
+
+- Clients in roles like student, retired, and unemployed are more likely to subscribe, making them ideal segments to focus on in future campaigns.
+
+- Conversely, blue-collar, entrepreneur, and housemaid roles have much lower response rates, indicating lower campaign efficiency in those groups.
+
+---
+
+## Subscription Rate by Marital Status
+
+- This bar chart shows subscription rates across different **marital status** groups.
+- Segments with **above-average rates** are shown in blue.
+- The **dashed line** indicates the overall conversion conversion rate.
+
+```{r}
+# Calculate overall conversion rate
+conversion_rate <- prop.table(table(bank_data$y))["yes"]
+
+# Response rate by marital status
+marital.df <- bank_data %>%
+  group_by(marital) %>%
+  summarize(
+    total_count = n(),
+    total_resp = sum(y == "yes")
+  ) %>%
+  mutate(
+    response_rate = round(total_resp / total_count, 3),
+    highlight_flag = ifelse(response_rate > conversion_rate, "Above", "Below")
+  )
+
+# Vertical bar chart with consistent colors
+ggplot(marital.df, aes(x = reorder(marital, -response_rate), 
+                       y = response_rate, 
+                       fill = highlight_flag)) +
+  geom_col(width = 0.6) +
+  geom_hline(yintercept = conversion_rate, 
+             linetype = "dashed", 
+             color = "red") +  # Keeping red reference line like previous plots
+  scale_fill_manual(values = c("Above" = "#A2C8E2", "Below" = "#F4B183"),
+                    labels = c("Above Average", "Below Average")) +
+  labs(
+    title = "Subscription Rate by Marital Status",
+    subtitle = "Dashed line = Overall Average Conversion Rate",
+    x = "Marital Status",
+    y = "Subscription Rate",
+    fill = ""
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")  # Consistent legend placement
+```
+
+- Why We Analyzed marital?
+- In marketing, marital status is commonly used for segmentation and message personalization.
+- Graphs:
+- Single clients have the highest conversion rate, significantly above average.
+
+- Divorced clients are slightly above average.
+
+- Married clients show a below-average response rate.
+
+---
+
+## Response Rate by Education Level
+
+- This chart shows subscription rates across different **education levels**.
+- Segments with **above-average subscription rates** are shown in blue.
+- The **dashed line** marks the overall subscription rate across all clients.
+
+```{r}
+# Conversion rate
+conversion_rate <- prop.table(table(bank_data$y))["yes"]
+
+# Response rate by education
+educ.df <- bank_data %>%
+  group_by(education) %>%
+  summarize(
+    total_count = n(),
+    total_resp = sum(y == "yes")
+  ) %>%
+  mutate(
+    response_rate = round(total_resp / total_count, 3),
+    highlight_flag = ifelse(response_rate > conversion_rate, "Above", "Below")
+  )
+
+# Vertical bar chart with consistent styling
+ggplot(educ.df, aes(x = reorder(education, -response_rate), 
+                    y = response_rate, 
+                    fill = highlight_flag)) +
+  geom_col(width = 0.6) +
+  geom_hline(yintercept = conversion_rate, 
+             linetype = "dashed", 
+             color = "red",  # Matching red reference line
+             linewidth = 0.8) +  # Slightly thicker for visibility
+  scale_fill_manual(values = c("Above" = "#A2C8E2", "Below" = "#F4B183"),
+                   labels = c("Above Average", "Below Average")) +
+  labs(
+    title = "Subscription Rate by Education Level",
+    subtitle = "Dashed line = Average Subscription Rate",
+    x = "Education Level",
+    y = "Subscription Rate",
+    fill = ""
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),  # Better angled labels
+    legend.position = "bottom",  # Consistent legend placement
+    plot.title = element_text(face = "bold", size = 14),  # Enhanced title
+    plot.subtitle = element_text(size = 10)  # Refined subtitle
+  ) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1))  # Show as percentages
+```
+
+- Clients with tertiary education have the highest conversion rate, well above the average.
+
+- The "unknown" group surprisingly also performs above average.
+
+- Clients with secondary and primary education are below the average, with primary being the lowest.
+
+- How to Use This Insight?
+- In modeling: Include education as a categorical feature with "unknown" treated explicitly.
+
+- In strategy: Prioritize tertiary-educated clients for high-value campaigns
+
+---
+
+## Age Distribution of Customers
+
+- This histogram shows the overall age distribution of clients.
+- It helps us detect age clusters and possible outliers.
+- Can age be an informative predictor?
+
+```{r}
+ggplot(bank_data, aes(x = age)) +
+  geom_histogram(fill = "#A2C8E2", color = "white", bins = 30, alpha = 0.9) +
+  labs(
+    title = "Age Distribution of Customers",
+    x = "Age",
+    y = "Number of Clients"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),  # Consistent title styling
+    axis.title = element_text(size = 12),  # Better axis labels
+    panel.grid.major = element_line(color = "grey90"),  # Lighter grid lines
+    panel.grid.minor = element_blank()  # Remove minor grid lines
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)))  # Remove space below bars
+```
+
+- Most clients are between 30 and 60 years old.
+
+- There are some younger (under 25) and older (over 70) clients, but they're fewer.
+
+- The distribution is slightly right-skewed, suggesting more clients are in middle adulthood.
+
+---
+
+## Age Distribution by Subscription Outcome
+
+- This violin plot shows how **age** is distributed across subscription outcomes.
+- It helps us assess whether **age** influences the likelihood of subscribing.
+
+```{r}
+ggplot(bank_data, aes(x = y, y = age, fill = y)) +
+  geom_violin(trim = FALSE, alpha = 0.7, color = NA) +  # Remove border for cleaner look
+  geom_boxplot(width = 0.1, 
+               outlier.shape = NA, 
+               alpha = 0.3,
+               color = "grey30") +  # Subtle boxplot outline
+  scale_fill_manual(values = c("no" = "#F4B183", "yes" = "#A2C8E2")) +
+  labs(
+    title = "Age Distribution by Subscription Outcome",
+    x = "Subscription Outcome",
+    y = "Age"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", size = 14),  # Consistent title style
+    axis.title = element_text(size = 12),  # Better axis labels
+    panel.grid.major.y = element_line(color = "grey90"),  # Only horizontal grid lines
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank()  # Remove vertical grid lines
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.02)))  # Slightly pad y-axis
+```
+
+- ✅ For yes (subscribed):
+- The distribution is slightly left-skewed, with a noticeable peak in the 30–40 age range.
+
+- Boxplot shows the median is lower than the "no" group → younger clients subscribe more often.
+
+- Distribution is more compact, suggesting more consistency in age among those who subscribed.
+
+- ❌ For no (did not subscribe):
+- Broader distribution with a slight right-skew.
+
+- Median age is higher, and the range of ages is wider.
+
+- Larger presence of older individuals who are less likely to subscribe.
+---
+
+## Call Duration vs Subscription Outcome
+
+- `duration` represents the call length in seconds.
+- It’s **highly correlated** with the target variable (`y`) because longer calls often result in subscriptions.
+- ⚠️ However, it’s a **post-outcome variable** — we can’t know duration before the call ends, so it must be used carefully.
+
+```{r}
+ggplot(bank_data, aes(x = duration, fill = y)) +
+  geom_density(alpha = 0.7, color = NA) +  # Remove outline for cleaner look
+  scale_fill_manual(values = c("no" = "#F4B183", "yes" = "#A2C8E2"),
+                    labels = c("No Subscription", "Subscription")) +
+  labs(
+    title = "Call Duration by Subscription Outcome",
+    x = "Call Duration (seconds)",
+    y = "Density",
+    fill = "Subscription Outcome"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),  # Consistent title style
+    axis.title = element_text(size = 12),  # Better axis labels
+    legend.position = "bottom",  # Consistent legend placement
+    legend.title = element_text(face = "bold"),  # Bold legend title
+    panel.grid.major = element_line(color = "grey90"),  # Lighter grid lines
+    panel.grid.minor = element_blank()  # Remove minor grid lines
+  ) +
+  scale_x_continuous(labels = scales::comma)  # Format x-axis numbers
+```
+
+- **Clients who subscribed (yes) tend to have longer call durations.**
+
+- The **yes curve** peaks later and has a **wider tail**, indicating extended conversations.
+
+- The contrast, **no responses** are mostly concentrated in **short calls (under ~300 seconds)**.
+
+- The distributions are clearly separated, which explains the **high correlation with the target `y`**.
+
+---
+
+## Account Balance vs Subscription Outcome
+
+- `balance` shows the client’s average yearly account balance in euros.
+- The violin plot below compares balance distributions for subscribers vs non-subscribers.
+
+```{r}
+ggplot(bank_data, aes(x = y, y = balance, fill = y)) +
+  geom_violin(trim = FALSE, alpha = 0.7, color = NA) +  # Remove violin outline
+  geom_boxplot(width = 0.15, 
+               outlier.shape = NA, 
+               alpha = 0.3,
+               color = "grey30") +  # Subtle boxplot outline
+  coord_cartesian(ylim = quantile(bank_data$balance, c(0.05, 0.95))) +
+  scale_fill_manual(values = c("no" = "#F4B183", "yes" = "#A2C8E2")) +
+  labs(
+    title = "Account Balance by Subscription Outcome",
+    subtitle = "Zoomed to 5th–95th percentile range to avoid outlier distortion",
+    x = "Subscription Outcome",
+    y = "Account Balance (€)"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 10, color = "grey40"),
+    axis.title = element_text(size = 12),
+    panel.grid.major.y = element_line(color = "grey90"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank()
+  ) +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "€"))  # Euro formatting
+```
+
+- **Clients who subscribed (`yes`) generally have higher balances** than non-subscribers.
+
+- The **median balance** (center of the box) is **visibly higher** for the `yes` group.
+
+- Both distributions are **positively skewed**, but the **`no` group shows more concentration at lower balances**.
+
+- The **spread is larger for subscribers**, suggesting **greater financial diversity** among those who converted.
+
+⚠️ Caution: Outliers & Skewness
+The raw balance variable includes extreme outliers, which can distort model training.
+
+---
+
+## Correlation Among Numeric Variables
+
+- This plot shows the correlations between all numeric variables.
+- It helps us detect multicollinearity and understand variable relationships.
+
+```{r}
+# Prepare numeric data with binary y
+corr_data <- bank_data %>%
+  mutate(y = ifelse(y == "yes", 1, 0)) %>%
+  select_if(is.numeric)
+
+# Compute correlation matrix
+corr_matrix <- cor(corr_data)
+
+# Plot the matrix
+corrplot(corr_matrix,
+         method = "color",
+         type = "upper",
+         tl.col = "black",
+         addCoef.col = "black",
+         tl.cex = 0.8,
+         number.cex = 0.7,
+         diag = FALSE,
+         title = "Correlation Matrix",
+         mar = c(0, 0, 1, 0))
+```
+
+- duration and y have the strongest positive correlation (0.39), which is expected.
+- Longer calls often lead to successful subscriptions.
+- ️⚠️ However, as discussed earlier, duration is a post-outcome variable and should be excluded from predictive models to avoid data leakage.
+
+- pdays and duration also show a moderate correlation (0.45), indicating that clients who were recently contacted may also have longer conversations.
+
+- Other variables like balance, age, previous, and campaign show very weak correlations with y (mostly under ±0.1).
+
+- How This Results Affect The Model Choosin Proccess ? 
+
+- The low correlation among most predictors suggests no serious multicollinearity, which is good for models like logistic regression.
+
+- Variables with even small correlation to y (like pdays, previous, balance) might still carry non-linear or interaction effects valuable to tree-based models
+
+---
+
+## Campaign Contact Frequency
+
+- `campaign` shows the number of contacts during this campaign.
+- High values may indicate over-contacting or customer fatigue.
+
+```{r}
+ggplot(bank_data, aes(x = campaign)) +
+  geom_histogram(binwidth = 1, 
+                 fill = "#A2C8E2", 
+                 color = "white", 
+                 linewidth = 0.3, 
+                 alpha = 0.9) +
+  coord_cartesian(xlim = c(0, 20)) +  # Focus on 0-20 calls range
+  scale_x_continuous(breaks = seq(0, 20, 2)) +  # Clear x-axis ticks
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +  # Remove space below bars
+  labs(
+    title = "Distribution of Contact Attempts During Campaign",
+    subtitle = "Limited to 0-20 calls range (showing 95% of cases)",
+    x = "Number of Contact Attempts",
+    y = "Number of Clients"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 10, color = "grey40"),
+    axis.title = element_text(size = 12),
+    panel.grid.major.y = element_line(color = "grey90"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank()  # Remove vertical grid lines
+  )
+```
+
+- **Most clients were contacted fewer than 5 times**, with a **sharp peak at 1 and 2 calls**.
+
+- **Very few clients received more than 10 calls** — but those who did might represent cases of **persistent outreach or inefficient targeting**.
+
+- The distribution is **heavily right-skewed**, indicating that **frequent contact is rare but exists**.
+
+- ⚠️ Modeling Note:
+
+- Due to its skewed distribution, consider log transformation or binning (e.g., 1 call, 2–3 calls, 4+ calls) before using in models.
+
+---
+
+## Linear Models – Exploratory Insight
+
+- Although `y` is a binary variable, linear regression can still give us **initial insight** into which variable groups explain variance in subscription outcomes.
+- Below, we estimate four simple linear models and compare their **R² scores**.
+
+---
+
+### Full Linear Model
+
+```{r warning=FALSE, echo=FALSE}
+# Convert response to numeric
+bank_data_new <- bank_data %>%
+  mutate(y_numeric = ifelse(y == "yes", 1, 0))
+
+# Full model with all predictors
+full_model <- lm(y_numeric ~ ., data = bank_data_new)
+summary(full_model)
+```
+
+<span style="color:red"><b>Intercept (~0):</b></span>
+
+- The intercept is very close to zero (3.78e-17), which means the baseline prediction (when all variables are zero) is nearly 0.
+
+- In real life, this value doesn’t have practical meaning, since no client can have all features as zero. It mainly helps set the model’s starting point.
+
+<span style="color:red"><b>Significant Job Types:</b></span>
+
+- Some job categories strongly affect the probability of subscription.
+
+- jobstudent (+): Students are more likely to say "yes".
+
+- jobretired (+): Retired people also have a higher chance.
+
+- jobblue-collar, jobself-employed, jobservices (-): These jobs are associated with a lower chance.
+
+- These effects are statistically significant (p < 0.01) and could reflect real differences in behavior across job types.
+
+<span style="color:red"><b>Month Effects:</b></span>
+
+- Some months show very strong patterns:
+
+- monthmar, monthoct, monthsep: Very high positive effect — clients are much more likely to subscribe in these months.
+
+- monthjan, monthjul, monthnov, monthaug: Negative effect — lower success rates in these months.
+
+- This suggests that timing of the campaign plays an important role in client decisions.
+
+<span style="color:red"><b>Call Duration (0.000446):</b></span>
+
+- Duration is the most powerful predictor.
+
+- Longer calls = higher chance of success.
+
+- This is highly significant and makes sense: more talk time means better engagement.
+
+<span style="color:red"><b>R² = 1.0 (100%):</b></span>
+
+- This model explains all the variation in the data — which seems too perfect.
+
+- This usually means there is a problem like data leakage.
+
+<span style="color:red"><b>Problem Detected – yyes:</b></span>
+
+- The variable yyes has a coefficient of 1.0, meaning the model is predicting y_numeric using itself.
+
+- This is a serious mistake. It makes the model useless in practice.
+
+### Model 1 – Demographic Variables
+
+```{r}
+lm_model1 <- lm(y_numeric ~ age, data = bank_data_new)
+summary(lm_model1)
+```
+
+<span style="color:red"><b>Intercept (0.0858):</b></span>
+
+- When age = 0, the predicted probability of subscription is 8.58%.
+
+- Note: This is purely theoretical (clients cannot be age 0). The intercept helps anchor the model but has no real-world meaning here.
+
+<span style="color:red"><b>Age Coefficient (0.00076):</b></span>
+
+For every 1-year increase in age, the probability of subscribing increases by 0.076% (a negligible effect).
+
+- Example: A 30-year-old has a predicted subscription probability of 0.0858 + (30 × 0.00076) = 10.86%.
+
+- While statistically significant (*p* < 0.001), this effect is practically meaningless due to its tiny magnitude.
+
+<span style="color:red"><b>R² = 0.00063 (0.063%):</b></span>
+
+- The model explains only 0.063% of the variation in subscriptions.
+
+- This is extremely weak—age alone is irrelevant for predicting subscriptions.
+
+<span style="color:red"><b>Residual Standard Error (0.321):</b></span>
+
+- Predictions are off by ±32 percentage points on average—far too high for practical use.
+
+<span style="color:red"><b>F-test (*p* = 8.83e-08):</b></span>
+
+- The relationship is statistically significant, but only due to the huge sample size (n=45,211).
+
+- Key Insight: Statistical significance ≠ practical importance.
+
+
+ 
+### Model 2 – Campaign Activity Variables
+
+<span style="color:red"><b>Why these variables?</b></span>  
+We included `campaign`, `pdays`, and `previous` because they directly measure **customer engagement** during the marketing process:
+
+- **`campaign`**: How many times the client was contacted during this campaign.
+- **`pdays`**: Days since the client was last contacted (in a previous campaign).
+- **`previous`**: Number of times the client was contacted in earlier campaigns.
+
+These are behavior-based features — not personal demographics — and are often used to assess **marketing pressure, timing**, and **persistence**.
+
+
+```{r}
+lm_model2 <- lm(y_numeric ~ campaign + pdays + previous, data = bank_data_new)
+summary(lm_model2)
+```
+<span style="color:red"><b>campaign coefficient = -0.0067</b></span>  
+→ A negative relationship: more contact attempts in this campaign slightly **decrease** the likelihood of subscription.  
+→ This may indicate **diminishing returns** or even customer fatigue.
+
+<span style="color:red"><b>pdays coefficient = +0.00023</b></span>  
+→ Clients who were contacted recently (lower pdays) are **less likely** to subscribe.  
+→ Those contacted after more time tend to convert more, suggesting the benefit of **spaced outreach**.
+
+<span style="color:red"><b>previous coefficient = +0.0082</b></span>  
+→ More successful interactions in past campaigns are **positively associated** with current subscription.  
+→ This matches intuition: **past responsiveness predicts future interest**.
+
+Model Fit Evaluation
+
+<span style="color:red"><b>R² = 0.0176</b></span>  
+→ Only **1.76%** of the variance is explained by these campaign variables.  
+→ This is **very low**, indicating the model has **poor explanatory power**.
+
+<span style="color:red"><b>Residual Std. Error = 0.3186</b></span>  
+→ High residual error confirms that these variables **alone** are **not sufficient** to predict subscriptions reliably.
+
+### Model 3 – Financial Status & Credit Risk
+
+<span style="color:red"><b>Why these variables?</b></span>  
+This model includes financial background indicators that may influence a client’s likelihood to invest:
+
+- **`balance`**: Yearly average account balance — a proxy for savings potential.
+- **`loan`**: Whether the client has a personal loan.
+- **`housing`**: Whether they have a housing loan.
+- **`default`**: History of credit default.
+
+These variables are directly tied to a client's **financial capacity and risk profile**, which can shape their decision to commit to a term deposit.
+
+
+```{r}
+bank_data <- bank_data %>%
+  mutate(across(c(loan, housing, default), as.factor))
+
+lm_model3 <- lm(y_numeric ~ balance + loan + housing + default, data = bank_data_new)
+summary(lm_model3)
+```
+<span style="color:red"><b>balance coefficient = +0.00000397</b></span>  
+→ Slight positive effect: clients with higher balances are **more likely** to subscribe.  
+→ Effect is statistically significant but **very small in magnitude**.
+
+<span style="color:red"><b>loan = yes → -0.051</b></span>  
+→ Clients with personal loans are **less likely** to subscribe. Possibly due to financial constraints.
+
+<span style="color:red"><b>housing = yes → -0.087</b></span>  
+→ Having a housing loan is negatively associated with subscription, indicating **lower investment capacity**.
+
+<span style="color:red"><b>default = yes → -0.039</b></span>  
+→ Past defaulters are **less responsive**, though this effect is weaker than loan or housing.
+
+Model Fit Evaluation
+
+<span style="color:red"><b>R² = 0.025</b></span>  
+→ The model explains only **2.5%** of the variation in the target variable.  
+→ This is a **very weak model** in terms of predictive power.
+
+<span style="color:red"><b>Residual Std. Error = 0.3174</b></span>  
+→ High error remains — the model is far from capturing subscription behavior accurately.
+
+### Model 4 – Temporal and Contact Info
+
+<span style="color:red"><b>Why these variables?</b></span>  
+We used `contact`, `month`, and `day` because they capture **when** and **how** the client was reached, which may impact responsiveness:
+
+- **`contact`**: Method used to reach the client (cellular, telephone, unknown).
+- **`month`**: The month when the contact was made — seasonality effect.
+- **`day`**: Day of the month (1–31) — to check timing sensitivity.
+
+```{r}
+lm_model4 <- lm(y_numeric ~ contact + month + day, data = bank_data_new)
+summary(lm_model4)
+```
+<span style="color:red"><b>contactunknown = -0.126</b></span>  
+→ Clients contacted via unknown channels are **much less likely** to subscribe.
+
+<span style="color:red"><b>contacttelephone = -0.027</b></span>  
+→ Traditional landline outreach performs **worse** than cellular (reference).
+
+<span style="color:red"><b>month effects:</b></span>  
+→ **December (+0.27)**, **March (+0.33)**, **October (+0.25)**, and **September (+0.28)** are associated with **much higher conversion rates**.  
+→ In contrast, **July (-0.10)**, **January (-0.097)**, and **August (-0.086)** show **significantly lower** performance.
+
+<span style="color:red"><b>day = not significant (p = 0.218)</b></span>  
+→ The exact day of the month **does not significantly affect** subscription outcome.
+
+ Model Fit Evaluation
+ 
+ <span style="color:red"><b>R² = 0.083</b></span>  
+→ The model explains about **8.3%** of the variance in subscription.  
+→ Better than campaign or financial models, but still **limited** in predictive power.
+
+<span style="color:red"><b>Residual Std. Error = 0.3078</b></span>  
+→ Consistent with prior models — confirms that **substantial variation remains unexplained**.
+
+### R² Comparison Across Models
+```{r}
+r2_table <- tibble(
+  Model = c("Demographic (Model 1)", 
+            "Campaign Activity (Model 2)",
+            "Financial Status (Model 3)", 
+            "Contact & Timing (Model 4)"),
+  R_Squared = c(
+    summary(lm_model1)$r.squared,
+    summary(lm_model2)$r.squared,
+    summary(lm_model3)$r.squared,
+    summary(lm_model4)$r.squared
+  ) %>% round(4)
+)
+
+knitr::kable(r2_table, caption = "R² Comparison of Linear Models")
+```
+
+- We compared four simple linear models to understand which types of variables carry more predictive power.
+- Model 1 (age + duration) performed best, but even that explained only 15.6% of the variance.
+- This suggests that subscription behavior is complex, and we need to combine multiple variable groups to build more powerful predictive models."
+
+<h3><b>Summary – Why Linear Regression Falls Short</b></h3>
+
+<table border="1" cellspacing="0" cellpadding="6">
+  <thead style="background-color:#f2f2f2;">
+    <tr>
+      <th><b>Issue</b></th>
+      <th><b>Why It’s a Problem</b></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Binary Target</td>
+      <td>Linear model assumes continuity</td>
+    </tr>
+    <tr>
+      <td>Invalid Predictions</td>
+      <td>Can output values &lt; 0 or &gt; 1</td>
+    </tr>
+    <tr>
+      <td>No Class Probabilities</td>
+      <td>Doesn’t estimate likelihood of “yes”</td>
+    </tr>
+    <tr>
+      <td>Misleading Metrics</td>
+      <td>R² doesn’t tell us real classification performance</td>
+    </tr>
+    <tr>
+      <td>Poor in Decision-Making</td>
+      <td>No clear threshold for class decision</td>
+    </tr>
+  </tbody>
+</table>
+
+
+<span style="font-weight:bold">Linear Model Review</span>
+
+- Although we used linear regression for exploratory purposes, it’s not suitable for binary classification tasks like ours.
+- It doesn’t model probabilities, can produce invalid outputs, and provides metrics that don’t reflect true model performance.
+- We instead rely on logistic regression, SVM, and random forest, which are designed for binary outcomes and decision boundaries."
+
+
+Let’s now move on to logistic regression for proper binary classification.
+
+---
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Model 1: Logistic Regression with Cross-Validation</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      background-color: #fafafa;
+      color: #333;
+    }
+    h1, h2 {
+      color: #2c3e50;
+    }
+    p {
+      line-height: 1.6;
+    }
+    .highlight {
+      color: #e74c3c;
+      font-weight: bold;
+    }
+    .code-block {
+      background-color: #f4f4f4;
+      padding: 12px;
+      border-left: 5px solid #2980b9;
+      font-family: monospace;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Model 1: Logistic Regression – Initial Setup</h1>
+
+  <h2>🔍 Objective</h2>
+  <p>
+    The goal of this model is to <span class="highlight">predict whether a client subscribes to a term deposit</span> based on various features such as demographics, campaign interactions, and financial history.
+    Since the target variable (<code>y</code>) is binary (<code>yes</code>/<code>no</code>), <span class="highlight">logistic regression</span> is a suitable classification method.
+  </p>
+
+  <h2>⚙️ Why Use Cross-Validation?</h2>
+  <p>
+    Instead of a single train-test split, we applied <span class="highlight">10-fold cross-validation (CV)</span> to ensure more reliable and generalizable results.
+  </p>
+  <ul>
+    <li><b>Stability:</b> Each data point is used for both training and validation.</li>
+    <li><b>Bias Reduction:</b> Less susceptible to overfitting than a single split.</li>
+    <li><b>Better Evaluation:</b> Performance metrics (e.g., ROC, accuracy) are averaged across 10 folds.</li>
+  </ul>
+
+  <h2>📦 Model Implementation</h2>
+  <div class="code-block">
+    library(caret)<br>
+    library(dplyr)<br><br>
+
+    
+  </div>
+
+  <h2>✅ Summary</h2>
+  <p>
+    Logistic regression provides a statistically sound and interpretable model, especially useful for understanding how different predictors affect the probability of subscription.
+    Cross-validation further strengthens this approach by reducing variance and providing a more honest assessment of performance.
+  </p>
+
+</body>
+</html>
+
+```{r}
+
+library(caret)
+library(dplyr)
+
+
+bank_data_cv <- bank_data %>%
+  mutate(y = factor(y, levels = c("no", "yes")))
+
+ctrl <- trainControl(method = "cv", number = 10, classProbs = TRUE, savePredictions = "final")
+
+
+ctrl <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+
+set.seed(123)
+model_cv <- train(
+  y ~ ., 
+  data = bank_data_cv,
+  method = "glm",
+  family = "binomial",
+  trControl = ctrl,
+  metric = "ROC"
+)
+
+print(model_cv)
+```
+
+Model Summary
+
+<h3>Key Performance Metrics</h3>
+
+<table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+  <thead style="background-color: #f2f2f2;">
+    <tr>
+      <th><strong>Metric</strong></th>
+      <th><strong>Value</strong></th>
+      <th><strong>Interpretation</strong></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ROC (AUC)</td>
+      <td>0.9067</td>
+      <td>The Area Under the Curve is very high, indicating excellent ability to distinguish between subscribers and non-subscribers. AUC &gt; 0.9 is considered outstanding.</td>
+    </tr>
+    <tr>
+      <td>Sensitivity (Recall)</td>
+      <td>0.9754</td>
+      <td>The model correctly identifies 97.5% of the actual subscribers (true positives). This is very high and desirable in marketing to avoid missing potential customers.</td>
+    </tr>
+    <tr>
+      <td>Specificity</td>
+      <td>0.3452</td>
+      <td>The model correctly identifies only 34.5% of non-subscribers (true negatives). This is low, meaning the model tends to overpredict "yes", possibly leading to unnecessary outreach.</td>
+    </tr>
+  </tbody>
+</table>
+
+
+- What This Tells Us?
+
+- The model is highly sensitive – it captures almost all the true positives. This is good when the cost of missing a potential subscriber is high (e.g., missed revenue).
+
+- The low specificity shows that it struggles to correctly classify non-subscribers, which might lead to false positives.
+
+- The AUC value of 0.9067 confirms that overall, the model separates the two classes (yes vs no) very well, despite the imbalance.
+
+---
+
+## Interpreting Model Coefficients
+	•	We now interpret our logistic regression results.
+	•	First, we test whether the overall model is statistically significant.
+	•	Then we interpret the magnitude and direction of each coefficient via odds ratios.
+
+```{r}
+coefs <- coef(model_cv$finalModel)
+
+
+odds_ratios <- exp(coefs) %>% round(2)
+
+
+odds_ratios
+```
+
+- Key Interpretations:
+
+### Demographic & Job Titles
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Odds Ratio</th>
+      <th>Interpretation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>jobstudent</code></td><td>1.47</td><td>Students are 47% more likely to subscribe.</td></tr>
+    <tr><td><code>jobretired</code></td><td>1.29</td><td>Retired individuals are 29% more likely to subscribe.</td></tr>
+    <tr><td><code>jobhousemaid</code></td><td>0.60</td><td>Housemaids are 40% less likely to subscribe.</td></tr>
+    <tr><td><code>jobentrepreneur</code></td><td>0.70</td><td>Entrepreneurs are 30% less likely to subscribe.</td></tr>
+    <tr><td><code>jobblue-collar</code></td><td>0.73</td><td>Blue-collar workers are 27% less likely to subscribe.</td></tr>
+  </tbody>
+</table>
+
+### Education
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Odds Ratio</th>
+      <th>Interpretation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>educationtertiary</code></td><td>1.46</td><td>Tertiary education increases odds by 46%.</td></tr>
+    <tr><td><code>educationsecondary</code></td><td>1.20</td><td>Secondary education increases odds by 20%.</td></tr>
+    <tr><td><code>educationunknown</code></td><td>1.28</td><td>Unknown education still increases odds by 28%.</td></tr>
+  </tbody>
+</table>
+
+### Financial Status
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Odds Ratio</th>
+      <th>Interpretation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>housingyes</code></td><td>0.51</td><td>49% less likely to subscribe if client has a housing loan.</td></tr>
+    <tr><td><code>loanyes</code></td><td>0.65</td><td>Personal loan holders are 35% less likely to subscribe.</td></tr>
+    <tr><td><code>balance</code></td><td>1.00</td><td>Balance has no meaningful effect.</td></tr>
+  </tbody>
+</table>
+
+### Contact Method & Month
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Odds Ratio</th>
+      <th>Interpretation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>contactunknown</code></td><td>0.20</td><td>Significantly lowers odds of subscription.</td></tr>
+    <tr><td><code>contacttelephone</code></td><td>0.85</td><td>Less effective than mobile contact (baseline).</td></tr>
+    <tr><td><code>monthmar</code></td><td>4.90</td><td>March contact increases odds nearly 5x.</td></tr>
+    <tr><td><code>monthdec</code></td><td>2.00</td><td>December is also highly effective.</td></tr>
+    <tr><td><code>monthsep</code></td><td>2.40</td><td>September shows strong performance.</td></tr>
+    <tr><td><code>monthjan</code></td><td>0.28</td><td>Very weak month for conversion.</td></tr>
+  </tbody>
+</table>
+
+### Campaign History
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Odds Ratio</th>
+      <th>Interpretation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>poutcomesuccess</code></td><td>9.89</td><td>Previous success boosts odds nearly 10x.</td></tr>
+    <tr><td><code>poutcomeother</code></td><td>1.23</td><td>Mild positive influence.</td></tr>
+    <tr><td><code>poutcomeunknown</code></td><td>0.91</td><td>Slightly lowers chances of subscription.</td></tr>
+  </tbody>
+</table>
+
+- Most influential variables: poutcomesuccess, monthmar, jobstudent, educationtertiary, and housingyes.
+
+- This interpretation helps marketers and business analysts target their efforts more effectively .
+
+---
+
+## Model Comparison: Full vs Reduced Model
+- Purpose:
+- To compare a full logistic regression model with a reduced one and see if we can simplify without losing performance.
+```{r}
+set.seed(123)
+model_full <- train(
+  y ~ ., 
+  data = bank_data_cv,
+  method = "glm",
+  family = "binomial",
+  trControl = ctrl,
+  metric = "ROC"
+)
+
+
+set.seed(123)
+model_reduced <- train(
+   y ~ age + job + marital + education + housing + loan + campaign + poutcome, 
+  data = bank_data_cv,
+  method = "glm",
+  family = "binomial",
+  trControl = ctrl,
+  metric = "ROC"
+)  
+
+
+model_full$results$ROC
+model_reduced$results$ROC
+```
+
+- Interpretation:
+- Both models return similar AUC scores. This means the reduced model (with fewer predictors) is nearly as effective as the full model.
+
+- Insights:
+- In business applications, simpler models are often preferred — they are easier to implement, explain, and maintain. If accuracy remains intact, we should choose the reduced model.
+
+## Model Performance: Accuracy & Confusion Matrix
+
+- Purpose:
+- To evaluate the logistic regression model using a 0.5 threshold and examine its raw accuracy and prediction breakdown.
+
+```{r}
+set.seed(123)
+split <- createDataPartition(bank_data_cv$y, p = 0.7, list = FALSE)
+train_data <- bank_data_cv[split, ]
+test_data <- bank_data_cv[-split, ]
+
+pred_cv <- predict(model_cv, newdata = test_data, type = "prob")
+
+
+predicted_cv <- ifelse(pred_cv[, "yes"] > 0.5, 1, 0)
+
+
+actual_cv <- ifelse(test_data$y == "yes", 1, 0)
+
+length(actual_cv)
+length(predicted_cv)
+
+
+confusion_tab_cv <- table(Actual = actual_cv, Predicted = predicted_cv)
+confusion_tab_cv
+
+
+accuracy_cv <- sum(diag(confusion_tab_cv)) / sum(confusion_tab_cv)
+round(accuracy_cv * 100, 2)
+```
+
+<table style="width:100%; border-collapse: collapse;" border="1">
+  <thead style="background-color:#f2f2f2;">
+    <tr>
+      <th><b>Term</b></th>
+      <th><b>Count</b></th>
+      <th><b>Description</b></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>True Negative (TN)</td>
+      <td>11696</td>
+      <td>The model correctly predicted a client would not subscribe.</td>
+    </tr>
+    <tr>
+      <td>False Positive (FP)</td>
+      <td>280</td>
+      <td>The model incorrectly predicted subscription for a non-subscriber.</td>
+    </tr>
+    <tr>
+      <td>False Negative (FN)</td>
+      <td>1020</td>
+      <td>The model missed actual subscribers, predicting "no".</td>
+    </tr>
+    <tr>
+      <td>True Positive (TP)</td>
+      <td>566</td>
+      <td>The model correctly identified actual subscribers.</td>
+    </tr>
+  </tbody>
+</table>
+
+- Accuracy: 90.41%
+- This means the model correctly predicted the outcome in 90% of all cases.
+
+- However, caution is needed:
+- The dataset is imbalanced — most clients said "no".
+- Therefore, even if the model mostly predicts "no", it can still achieve high accuracy.
+- This makes accuracy a potentially misleading metric in imbalanced classification tasks.
+
+---
+
+## Precision, Recall, and F1 Score
+
+- Purpose:
+- To go beyond accuracy and evaluate model performance in detecting the minority class (“yes”).
+- Accuracy can be misleading, especially with imbalanced classes.
+- Precision, Recall, and F1 Score provide deeper evaluation of model performance.
+
+```{r}
+
+ctrl <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+model_cv <- train(
+  y ~ ., 
+  data = train_data,
+  method = "glm",
+  family = "binomial",
+  trControl = ctrl,
+  metric = "ROC"
+)
+
+predicted_classes <- predict(model_cv, newdata = test_data)
+
+
+actual <- test_data$y
+
+
+library(caret)
+confusionMatrix(predicted_classes, actual, positive = "yes")
+```
+
+- Interpretation:
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+  <thead style="background-color: #f2f2f2;">
+    <tr>
+      <th><b>Metric</b></th>
+      <th><b>Value</b></th>
+      <th><b>Interpretation</b></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Accuracy</td>
+      <td>90.36%</td>
+      <td>The model correctly predicted 90.36% of all cases. Seems strong but may be misleading due to class imbalance.</td>
+    </tr>
+    <tr>
+      <td>Kappa</td>
+      <td>0.4129</td>
+      <td>Indicates moderate agreement between predictions and actuals beyond chance.</td>
+    </tr>
+    <tr>
+      <td>Sensitivity (Recall)</td>
+      <td>35.18%</td>
+      <td>Only 35% of actual subscribers were correctly predicted — many false negatives.</td>
+    </tr>
+    <tr>
+      <td>Specificity</td>
+      <td>97.66%</td>
+      <td>Very good at identifying non-subscribers.</td>
+    </tr>
+    <tr>
+      <td>Positive Predictive Value (Precision)</td>
+      <td>66.59%</td>
+      <td>When the model predicts “Yes,” it is correct ~67% of the time.</td>
+    </tr>
+    <tr>
+      <td>Negative Predictive Value</td>
+      <td>91.92%</td>
+      <td>When the model predicts “No,” it's correct ~92% of the time.</td>
+    </tr>
+    <tr>
+      <td>Balanced Accuracy</td>
+      <td>66.42%</td>
+      <td>Average of sensitivity and specificity — useful when classes are imbalanced.</td>
+    </tr>
+  </tbody>
+</table>
+
+---
+
+## Model Performance: ROC Curve & AUC
+- Purpose:
+- To evaluate the model’s ranking ability — how well it separates “yes” from “no” across different thresholds.
+- The ROC curve shows the trade-off between True Positive Rate (TPR) and False Positive Rate (FPR).
+- AUC (Area Under the Curve) tells us how well the model separates the classes.
+
+```{r}
+
+pred_cv_probs <- predict(model_cv, newdata = test_data, type = "prob")
+
+
+library(ROCR)
+
+
+pred_obj <- prediction(pred_cv_probs[["yes"]], test_data$y)
+
+
+perf <- performance(pred_obj, "tpr", "fpr")
+
+
+plot(perf, col = "#A2C8E2", lwd = 2, main = "ROC Curve (CV Logistic Regression)")
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+
+auc <- performance(pred_obj, "auc")
+auc_value <- as.numeric(auc@y.values)
+auc_value
+
+```
+
+	•	AUC closer to 1 → better model
+	•	AUC < 0.7 → poor discrimination
+	•	This tells us how confidently the model ranks predictions — not just accuracy
+	
+	- Interpretation:
+- The AUC is high (~0.90), which means the model does a great job distinguishing between classes, even if the default threshold isn’t ideal.
+
+  - Insights:
+- We may consider adjusting the decision threshold (e.g., 0.3 instead of 0.5) to trade off precision and recall, depending on business goals.
+
+---
+
+## Model 2: Support Vector Machine (Radial Kernel)
+- Purpose:
+- To evaluate a Support Vector Machine model and see if it captures non-linear relationships missed by logistic regression.
+- We now build an SVM model using a **radial kernel** with the `e1071` package.
+- This model captures non-linear patterns and returns class probabilities.
+
+```{r}
+library(e1071)
+library(caret)
+library(dplyr)
+
+# Veriyi hazırla
+b_data <- bank_data %>%
+  mutate(y = factor(ifelse(y == "yes", "Yes", "No"), levels = c("No", "Yes")))
+
+set.seed(123)
+split <- createDataPartition(b_data$y, p = 0.7, list = FALSE)
+train_data <- b_data[split, ]
+test_data  <- b_data[-split, ]
+
+train_data_svm <- train_data %>%
+  mutate(y = factor(y, levels = c("No", "Yes")))
+
+test_data_svm <- test_data %>%
+  mutate(y = factor(y, levels = c("No", "Yes")))
+
+# Modeli kur
+set.seed(1234)
+svm_radial_model <- svm(
+  y ~ .,
+  data = train_data_svm,
+  kernel = "radial",
+  probability = TRUE
+)
+
+
+```
+
+	•	AUC Score: r round(svm_auc, 3)
+	•	Confusion Matrix provides: accuracy, precision, recall, F1
+	
+	- Interpretation:
+- SVM performs well in both AUC and confusion matrix metrics. It balances false positives and false negatives better than logistic regression.
+
+  - Insights:
+- SVM is a strong alternative when decision boundaries are complex or data isn’t linearly separable. However, it’s harder to interpret than logistic regression.
+
+---
+
+## SVM (Radial) – Performance Evaluation
+
+- Let’s check AUC and classification metrics for the SVM model.
+
+```{r}
+svm_pred_prob <- predict(svm_radial_model, newdata = test_data_svm, probability = TRUE)
+
+svm_probs <- attr(svm_pred_prob, "probabilities")[, "Yes"]
+
+svm_pred_class <- ifelse(svm_probs > 0.5, "Yes", "No") %>%
+  factor(levels = c("No", "Yes"))
+
+confusionMatrix(svm_pred_class, test_data_svm$y, positive = "Yes")
+
+library(ROCR)
+
+svm_pred_rocr <- prediction(svm_probs, test_data_svm$y)
+svm_perf <- performance(svm_pred_rocr, "tpr", "fpr")
+
+plot(svm_perf, col = "#A2C8E2", lwd = 2, main = "SVM ROC Curve")
+abline(a = 0, b = 1, lty = 2)
+
+svm_auc <- performance(svm_pred_rocr, measure = "auc")@y.values[[1]]
+cat("AUC:", svm_auc, "\n")
+```
+
+    •    AUC Score: r round(svm_auc, 3)
+    •    Confusion Matrix provides: accuracy, precision, recall, and F1-score
+	
+---
+
+## Model 3: Random Forest
+
+- We now try a third model using the **Random Forest** algorithm.
+- RF is an ensemble method based on multiple decision trees.
+- It is often very effective for classification tasks.
+
+```{r}
+# Train random forest
+set.seed(123)
+rf_model <- randomForest(y ~ ., data = train_data, ntree = 100)
+
+# Predict probabilities
+rf_prob <- predict(rf_model, test_data, type = "prob")[,2]
+
+# Binary prediction
+rf_pred <- ifelse(rf_prob > 0.5, 1, 0)
+
+# Confusion matrix
+rf_conf_mat <- table(Actual = test_data$y, Predicted = rf_pred)
+rf_conf_mat
+
+# Accuracy
+rf_accuracy <- sum(diag(rf_conf_mat)) / sum(rf_conf_mat)
+round(rf_accuracy * 100, 2)
+
+## Random Forest: ROC Curve & AUC
+```
+
+- Let’s evaluate how well Random Forest ranks predictions.
+
+```{r}
+# ROC and AUC
+rf_pr <- prediction(rf_prob, test_data$y)
+rf_perf <- performance(rf_pr, "tpr", "fpr")
+
+# Plot ROC
+plot(rf_perf, col = "#A2C8E2", lwd = 2, main = "Random Forest ROC Curve")
+abline(a = 0, b = 1, lty = 2)
+
+# AUC
+rf_auc <- performance(rf_pr, measure = "auc")
+rf_auc_value <- as.numeric(rf_auc@y.values)
+rf_auc_value
+
+# Interpretation
+rf_auc_comment <- case_when(
+  rf_auc_value >= 0.9 ~ "Outstanding",
+  rf_auc_value >= 0.8 ~ "Excellent",
+  rf_auc_value >= 0.7 ~ "Acceptable",
+  rf_auc_value >= 0.6 ~ "Poor",
+  TRUE ~ "No Discrimination"
+)
+```
+
+	•	AUC Score: r round(rf_auc_value, 3) → r rf_auc_comment
+	•	Accuracy: r round(rf_accuracy * 100, 2)%
+
+## Random Forest: Feature Importance
+
+- RF provides a ranking of variable importance.
+- This is valuable for marketing decisions.
+
+```{r}
+# Feature importance plot
+varImpPlot(rf_model, main = "Random Forest Variable Importance")
+```
+
+	•	The most important features can guide segmentation and targeting strategies.
+	
+		- Interpretation:
+- RF performs well and provides high interpretability in terms of feature contribution. Features like month, poutcome, and job are top drivers.
+
+  - Insights:
+- Random Forest is powerful when raw predictive performance is the priority. Its feature importance chart is especially valuable for guiding targeting strategies.
+
+---
+
+## Model Comparison Summary
+
+- Let’s summarize the performance of all three models.
+- Metrics: **Accuracy** and **AUC Score**
+
+- Purpose:
+- To summarize the performance of all three models (Logistic, SVM, RF) across Accuracy and AUC.
+
+```{r}
+library(tibble)
+
+logit_auc_cv <- model_cv$results$ROC
+logit_accuracy_cv <- model_cv$results$Accuracy
+
+logit_auc_cv
+logit_accuracy_cv
+
+# Create summary table
+model_compare <- tibble(
+  Model = c("Logistic Regression", "Support Vector Machine", "Random Forest"),
+  Accuracy = c(round(accuracy_cv * 100, 2),
+               round(sum(svm_pred_class == test_data_svm$y) / length(svm_pred_class) * 100, 2),
+               round(rf_accuracy * 100, 2)),
+  AUC = c(round(auc_value, 3),
+          round(svm_auc, 3),
+          round(rf_auc_value, 3))
+)
+
+knitr::kable(model_compare, caption = "Model Performance Comparison: Accuracy and AUC")
+```
+
+
+	•	Logistic Regression is interpretable and statistically sound — especially useful for communication with non-technical stakeholders.
+	•	SVM showed strong performance with a smooth decision boundary and a competitive AUC score.
+	•	Random Forest achieved high accuracy and offers feature importance insights — helpful for segmentation strategy.
+
+Final model choice depends on your priorities:
+	•	Use Logistic Regression if interpretability matters most.
+	•	Use SVM if nonlinear relationships dominate.
+	•	Use Random Forest if predictive performance is the top priority.
+	
+	- Interpretation:
+- All models perform well, but trade-offs exist:
+	•	Logistic: best for transparency
+	•	SVM: strong boundary detection
+	•	RF: highest raw accuracy and feature insights
+
+  - Insights:
+  - Model choice depends on the business goal — whether you value interpretability, prediction power, or feature understanding more.
+
+---
+
+## ✅ Final Conclusions & Strategic Marketing Recommendations
+
+🔍 Key Takeaways
+	•	Our logistic regression model is statistically significant and supported by strong performance metrics.
+	
+	•	Several predictors stand out as key drivers of subscription behavior:
+	
+	•	Job Role: Students and retirees are significantly more likely to subscribe.
+	
+	•	Education Level: Clients with tertiary education show higher engagement.
+	
+	•	Marital Status: Single clients are more responsive than married ones.
+	
+	•	Previous Outcome: Past campaign success is a powerful indicator of future conversion.
+
+##  Overall Model Performance
+
+	•	Accuracy: `r round(accuracy_cv * 100, 2)`%
+	
+	•	AUC Score: `r round(auc_value, 3)`
+	
+	•	Classification Quality: `r rf_auc_comment`
+	
+→ Indicates the model has strong discriminatory power and separates responders from non-responders effectively.
+
+---
+
+## 💡 Marketing Strategy Recommendations
+
+### ✅ Target High-Potential Segments
+
+- Focus marketing efforts on customer groups with higher conversion potential:
+
+	•	🎯 Students and retirees (response rates above 20%)
+	
+	•	🎓 Clients with tertiary education
+	
+	•	📱 Clients contacted via cellular phone
+	
+	•	🔁 Clients who had a successful outcome in previous campaigns
+
+These segments are statistically more likely to respond and should be prioritized in future outreach, content personalization, and retargeting strategies.
+
+
+### 🚫 Reconsider Lower-Performing Segments
+
+Deprioritize or redesign campaigns for groups with consistently lower response rates:
+
+	•	👷 Blue-collar and housemaid occupations
+	
+	•	🏫 Clients with only primary education
+	
+	•	💍 Married clients, who show below-average engagement
+
+Reducing resource allocation toward these groups can improve campaign efficiency and allow better ROI optimization.
+
+---
+
+## 📌 Final Thoughts
+
+	•	Predictive modeling is not just about forecasting — it’s about enabling smarter decisions.
+	
+	•	By leveraging model insights, marketing teams can transition from broad outreach to data-driven segmentation, improving both efficiency and effectiveness.
